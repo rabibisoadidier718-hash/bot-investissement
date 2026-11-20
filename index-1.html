@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f172a">
+<title>Bot Investissement</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--txt:#e2e8f0;--mut:#94a3b8;--ok:#22c55e;--ko:#ef4444;--acc:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif;padding-bottom:72px}
+h1{font-size:18px;margin:0;padding:14px 16px;background:#020617}
+section{display:none;padding:12px}
+section.on{display:block}
+.card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea,button{width:100%;padding:10px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:var(--txt);font-size:15px}
+button{background:var(--acc);color:#000;font-weight:700;border:0;margin-top:10px}
+button.s{width:auto;padding:6px 10px;margin:4px 4px 0 0;font-size:13px}
+button.g{background:var(--ok)}button.r{background:var(--ko);color:#fff}button.n{background:#475569;color:#fff}
+.big{font-size:26px;font-weight:800}
+.pos{color:var(--ok)}.neg{color:var(--ko)}
+.warn{background:#422006;border:1px solid var(--acc);border-radius:10px;padding:10px;font-size:13px;margin-bottom:12px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#020617;border-top:1px solid #334155}
+nav a{flex:1;text-align:center;padding:12px 0;font-size:13px;color:var(--mut)}
+nav a.on{color:var(--acc);font-weight:700}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.bet{border-bottom:1px solid #334155;padding:8px 0;font-size:14px}
+.bet small{color:var(--mut)}
+textarea{height:300px;font-size:12px}
+</style>
+</head>
+<body>
+<h1>📊 Bot Investissement</h1>
+
+<section id="capital" class="on">
+ <div class="warn">⚠️ Les paris comportent un risque de perte. Aucun gain n'est garanti. Ne misez que ce que vous pouvez perdre. Un objectif de +14 % à +50 % par jour n'est pas réaliste : ici, ces pourcentages sont des <b>plafonds d'exposition</b>, jamais des objectifs.</div>
+ <div class="card">
+  <div style="color:var(--mut);font-size:12px">Capital actuel</div>
+  <div class="big" id="cur">0</div>
+  <div id="pl"></div>
+  <div id="dd" style="font-size:13px;color:var(--mut)"></div>
+ </div>
+ <div class="card">
+  <b>Paramètres</b>
+  <label>Capital de départ</label><input id="cap0" type="number" inputmode="decimal">
+  <label>Devise</label><input id="dev" value="Ar">
+  <label>Horizon</label>
+  <select id="hor"><option value="30">30 jours</option><option value="60">60 jours</option><option value="365">1 an</option></select>
+  <label>Mise par pari (% du capital) — conseillé 1 à 5 %</label><input id="pct" type="number" value="3" step="0.5">
+  <label>Plafond d'exposition par jour (% du capital)</label><input id="plaf" type="number" value="14">
+  <button onclick="saveSet()">Enregistrer</button>
+ </div>
+ <div class="card" id="proj"></div>
+</section>
+
+<section id="paris">
+ <div class="card">
+  <b>Nouveau pari</b>
+  <label>Sport</label>
+  <select id="sport"><option>Football</option><option>Hippique</option><option>Hockey sur glace</option><option>Football américain</option><option>Rugby</option></select>
+  <label>Événement (match ou course + cheval)</label><input id="evt">
+  <label>Marché (ex. Over 2.5, Gagnant)</label><input id="mkt">
+  <div class="row"><div><label>Cote</label><input id="odd" type="number" step="0.01" inputmode="decimal"></div>
+  <div><label>Probabilité estimée %</label><input id="prob" type="number" inputmode="decimal"></div></div>
+  <label>Mise (vide = mise conseillée)</label><input id="stake" type="number" inputmode="decimal">
+  <div id="hint" style="font-size:13px;color:var(--mut);margin-top:6px"></div>
+  <button onclick="addBet()">Ajouter le pari</button>
+ </div>
+ <div class="card"><b>En attente</b><div id="pend"></div></div>
+</section>
+
+<section id="histo">
+ <div class="card" id="stats"></div>
+ <div class="card"><b>Historique</b><div id="hist"></div>
+ <button class="n" onclick="exportData()">Copier les données (sauvegarde)</button>
+ <button class="r" onclick="resetAll()">Tout effacer</button></div>
+</section>
+
+<section id="prompt">
+ <div class="card">
+  <b>Prompt à coller dans Claude ou ChatGPT</b>
+  <label>Domaine du jour</label>
+  <select id="dom" onchange="showPrompt()"><option value="all">Complet (tous les sports)</option><option value="Football">Football</option><option value="Hippique">Hippique</option><option value="Autres">Hockey / Foot US / Rugby</option></select>
+  <textarea id="ptxt" readonly></textarea>
+  <button onclick="copyPrompt()">Copier le prompt</button>
+ </div>
+</section>
+
+<nav>
+ <a class="on" onclick="go('capital',this)">💰 Capital</a>
+ <a onclick="go('paris',this)">🎯 Paris</a>
+ <a onclick="go('histo',this)">📈 Stats</a>
+ <a onclick="go('prompt',this)">🧠 Prompt</a>
+</nav>
+
+<script>
+const PROMPT = "# PROMPT OFFICIEL — BOT D'ANALYSE MULTI-SPORTS (FOOT ANALYSE PRO + HIPPIQUE)\n\nAgis comme un analyste professionnel des paris sportifs et hippiques, spécialiste des statistiques, des probabilités, des modèles prédictifs et de la gestion de capital.\n\nHeure de référence : Madagascar (Indian/Antananarivo, UTC+3). Rapport en français.\n\n---\n\n## 1. OBJECTIF GÉNÉRAL\n\n- Chaque jour, choisir le(s) domaine(s) à analyser : Hippique, Football, Hockey sur glace, Football américain, Rugby.\n- Objectif à long terme : faire croître un petit capital de façon progressive (effet boule de neige / effet cumulatif) sur un horizon de 30 jours, 60 jours ou 1 an.\n- Principe fondamental : LA QUALITÉ AVANT LA QUANTITÉ. La discipline et la protection du capital passent avant tout objectif de gain.\n- Aucun objectif de gain journalier ne doit jamais forcer une sélection. Si rien ne passe les filtres : AUCUNE SÉLECTION VALIDÉE AUJOURD'HUI, mise = 0.\n\n---\n\n## 2. CHOIX DU JOUR ET GESTION DU CAPITAL\n\n1. Choisir le domaine du jour en fonction de la qualité des données et des opportunités disponibles (pas par habitude).\n2. Paramètres fournis par l'utilisateur (à demander s'ils manquent) : capital de départ, devise, horizon (30 j / 60 j / 1 an), exposition maximale par jour.\n3. Pourcentage de capital du jour : fourchette indicative de 14 % à 50 % du capital maximum, à traiter comme un PLAFOND d'exposition et jamais comme une obligation ni un objectif de gain.\n   - Par défaut, recommander une mise unitaire prudente (ex. 1 à 5 % du capital par pari) et expliquer le risque de ruine si l'utilisateur choisit plus.\n   - Ne jamais augmenter les mises pour récupérer une perte.\n4. Suivre le capital : capital initial, capital actuel, résultats cumulés, drawdown. Fournir un tableau de suivi.\n5. Avertissement obligatoire : un objectif de gain quotidien élevé et composé est mathématiquement irréaliste (ex. +14 %/jour pendant 30 jours reviendrait à multiplier le capital par environ 50 ; +50 %/jour, par plus de 190 000). Aucun résultat n'est garanti.\n\n---\n\n## 3. MODULE HIPPIQUE\n\nObjectif : trouver la meilleure course et le meilleur cheval.\n\nCourses à analyser : Quinté+ et courses des clubs / hippodromes.\n\nSources : Equidia, Zone Turf, Google, YouTube (replays, analyses), sites officiels (PMU, France Galop, etc.). Recouper plusieurs sources, indiquer liens et date de vérification.\n\nAnalyse obligatoire :\n- État du cheval : forme récente, résultats, régularité, repos, santé et incidents connus.\n- Le jockey : palmarès, forme, statistiques avec le cheval et sur l'hippodrome.\n- Le poids du jockey / poids porté.\n- Le terrain : état de la piste (souple, lourd, bon, etc.), distance, discipline.\n- Compatibilités : le terrain est-il compatible avec le cheval ? le cheval est-il compatible avec le jockey ? Synthèse TERRAIN + CHEVAL + JOCKEY.\n- Cotes disponibles et probabilité implicite (corrigée de la marge si possible).\n\nRègles : ne jamais inventer de partants, de cotes, de résultats ou de rapports ; signaler toute donnée manquante ; n'écarter aucune course sur sa seule notoriété.\n\n---\n\n## 4. MODULE FOOTBALL — OVER 2.5, FILTRE MINIMUM 80 %\n\nMission : identifier exclusivement les matchs avec une probabilité estimée d'au moins 80 % pour PLUS DE 2,5 BUTS.\n\nChamp d'analyse mondial : toutes divisions, compétitions continentales et nationales, sélections, football masculin et féminin, U21/U19 si les données sont fiables. Ne jamais privilégier les grandes équipes.\n\nRègles impératives :\n- Minimum 80 % ; ne jamais réduire le seuil ; ne jamais choisir un match pour remplir le rapport.\n- Ne jamais confondre cote faible et forte probabilité réelle.\n- Écarter les matchs aux données insuffisantes ou contradictoires.\n\nSources prioritaires : SofaScore, Forebet, Flashscore, Soccerway, ESPN, sources officielles, sites statistiques, sources fiables pour blessures et compositions.\n\nAnalyse par candidat :\n- Forme : jusqu'à 20 derniers matchs (résultats, buts marqués/encaissés, moyennes, fréquences Over 1.5 / 2.5 / 3.5, BTTS, clean sheets, matchs sans marquer).\n- Domicile / extérieur analysés séparément.\n- H2H : jusqu'à 10 confrontations, sans surpondérer les anciennes.\n- Avancé : xG, xGA, tirs cadrés, occasions franches, possession.\n- Contexte : classement, force des adversaires, motivation, blessures, suspensions, compositions, fatigue, déplacements, météo.\n\nCotes : Over 2.5 et Under 2.5. Distinguer (1) probabilité estimée, (2) probabilité implicite, (3) probabilité implicite corrigée de la marge. Indiquer bookmaker, cote et heure de consultation.\n\nClassement : 90 %+ exceptionnelle (données très solides requises) ; 85–89 % forte ; 80–84 % minimale acceptable ; moins de 80 % rejet automatique.\n\n---\n\n## 5. MODULE AUTRES SPORTS : HOCKEY SUR GLACE, FOOTBALL AMÉRICAIN, RUGBY\n\nAppliquer la même rigueur que pour le football : forme récente, domicile/extérieur, H2H, statistiques offensives et défensives, blessures et absences, calendrier, conditions de jeu, cotes et probabilité implicite corrigée. Choisir des marchés pertinents (vainqueur, totaux de points/buts, handicap) selon les données disponibles. Mêmes seuils de prudence : ne sélectionner que si la probabilité estimée est justifiée par des éléments mesurables et que les données sont suffisantes.\n\n---\n\n## 6. MÉTHODE DE CALCUL\n\n- Combiner plusieurs facteurs indépendants et éviter le double comptage.\n- Justifier chaque probabilité par des éléments mesurables.\n- Ne jamais inventer un pourcentage pour atteindre un seuil.\n- Comparer probabilité estimée et probabilité implicite : ne retenir un pari que s'il présente une valeur (probabilité estimée supérieure à la probabilité implicite corrigée).\n\n---\n\n## 7. FORMAT DU RAPPORT QUOTIDIEN\n\nDate et heure (Madagascar), domaine(s) analysé(s) aujourd'hui.\n\nPour chaque sélection :\n1. Rang\n2. Sport / compétition / hippodrome\n3. Match ou course (cheval, jockey)\n4. Date et heure à Madagascar\n5. Marché et probabilité estimée\n6. Cote disponible, bookmaker, heure de consultation\n7. Probabilité implicite (et corrigée)\n8. Statistiques clés (20 derniers matchs, domicile/extérieur, H2H, xG/xGA pour le football ; forme, jockey, poids, terrain pour l'hippique)\n9. Blessures, absences, non-partants\n10. Justification\n11. Principaux risques\n12. Données manquantes ou non vérifiées\n13. Mise suggérée (% du capital) selon la gestion de capital\n14. Liens des sources\n\n---\n\n## 8. RÈGLES DE FIABILITÉ\n\n- Ne jamais inventer de matchs, courses, résultats, statistiques, blessures, cotes ni sources.\n- Ne jamais prétendre avoir vérifié des données non vérifiées.\n- Signaler clairement les données indisponibles.\n- Ne jamais présenter une prédiction comme une certitude.\n- Distinguer faits vérifiés, estimations et hypothèses.\n- Ne pas utiliser de données anciennes comme si elles étaient récentes.\n\n---\n\n## 9. VERDICT FINAL\n\n- Nombre d'événements examinés (si vérifiable), de candidats détectés, de sélections validées.\n- Meilleure sélection.\n- Niveau de confiance dans les données.\n- Principaux risques.\n- Mise totale du jour et part du capital exposée.\n- Si rien ne passe les filtres : AUCUNE SÉLECTION VALIDÉE AUJOURD'HUI. Ne jamais forcer un pari.\n\n---\n\n## 10. EXÉCUTION QUOTIDIENNE\n\nÀ chaque exécution : rechercher les événements du jour, actualiser toutes les données, recalculer les probabilités, produire un rapport complet (même sans sélection), ne jamais recycler d'anciennes analyses.\n\nRappel : les probabilités sont des estimations et non des garanties de gain. Ne parier que de l'argent que l'on peut se permettre de perdre.\n";
+const K='botinv_v1';
+let S=load();
+function load(){try{return JSON.parse(localStorage.getItem(K))||{cap0:0,dev:'Ar',hor:30,pct:3,plaf:14,bets:[]}}catch(e){return {cap0:0,dev:'Ar',hor:30,pct:3,plaf:14,bets:[]}}}
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function fmt(n){return Math.round(n*100)/100}
+function go(id,a){document.querySelectorAll('section').forEach(s=>s.classList.remove('on'));$(id).classList.add('on');document.querySelectorAll('nav a').forEach(x=>x.classList.remove('on'));a.classList.add('on');render()}
+function saveSet(){S.cap0=+$('cap0').value||0;S.dev=$('dev').value||'';S.hor=+$('hor').value;S.pct=+$('pct').value||3;S.plaf=+$('plaf').value||14;save();render();alert('Enregistré')}
+function profit(b){if(b.res==='won')return b.stake*(b.odd-1);if(b.res==='lost')return -b.stake;return 0}
+function capital(){return S.cap0+S.bets.reduce((a,b)=>a+profit(b),0)}
+function today(){return new Date().toISOString().slice(0,10)}
+function suggested(){return fmt(capital()*S.pct/100)}
+function exposureToday(){return S.bets.filter(b=>b.date===today()&&b.res!=='void').reduce((a,b)=>a+b.stake,0)}
+function addBet(){
+ const odd=+$('odd').value;if(!($('evt').value&&odd>1)){alert('Renseignez l\'événement et une cote > 1');return}
+ const stake=+$('stake').value||suggested();
+ const cap=capital();
+ if(stake>cap){alert('Mise supérieure au capital disponible');return}
+ const plafMax=cap*S.plaf/100;
+ if(exposureToday()+stake>plafMax&&!confirm('Cette mise dépasse votre plafond journalier. Continuer quand même ?'))return;
+ const prob=+$('prob').value;
+ if(prob&&prob/100*odd<=1&&!confirm('Pas de valeur : probabilité estimée × cote ≤ 1. Continuer quand même ?'))return;
+ S.bets.unshift({id:Date.now(),date:today(),sport:$('sport').value,evt:$('evt').value,mkt:$('mkt').value,odd,stake,prob,res:'pending'});
+ save();['evt','mkt','odd','prob','stake'].forEach(i=>$(i).value='');render()}
+function settle(id,r){const b=S.bets.find(x=>x.id===id);b.res=r;save();render()}
+function del(id){if(confirm('Supprimer ce pari ?')){S.bets=S.bets.filter(x=>x.id!==id);save();render()}}
+function render(){
+ const cap=capital(),d=S.dev;
+ $('cur').textContent=fmt(cap)+' '+d;
+ const pl=cap-S.cap0;$('pl').innerHTML='<span class="'+(pl>=0?'pos':'neg')+'">'+(pl>=0?'+':'')+fmt(pl)+' '+d+'</span>';
+ let peak=S.cap0,run=S.cap0,dd=0;[...S.bets].reverse().forEach(b=>{run+=profit(b);if(run>peak)peak=run;if(peak>0)dd=Math.max(dd,(peak-run)/peak)});
+ $('dd').textContent='Baisse maximale (drawdown) : '+fmt(dd*100)+' %';
+ $('cap0').value=S.cap0||'';$('dev').value=S.dev;$('hor').value=S.hor;$('pct').value=S.pct;$('plaf').value=S.plaf;
+ $('proj').innerHTML='<b>Plan sur '+S.hor+' jours</b><div style="font-size:13px;color:var(--mut);margin-top:6px">Mise conseillée par pari : <b style="color:var(--txt)">'+suggested()+' '+d+'</b><br>Plafond du jour : <b style="color:var(--txt)">'+fmt(cap*S.plaf/100)+' '+d+'</b> (déjà exposé : '+fmt(exposureToday())+' '+d+')<br>Pas de bon pari aujourd\'hui ? Mise = 0. Ne jamais forcer.</div>';
+ $('hint').textContent='Mise conseillée : '+suggested()+' '+d;
+ $('pend').innerHTML=S.bets.filter(b=>b.res==='pending').map(b=>'<div class="bet"><b>'+esc(b.evt)+'</b> <small>'+b.sport+' · '+esc(b.mkt)+'</small><br>Cote '+b.odd+' · Mise '+b.stake+' '+d+'<br><button class="s g" onclick="settle('+b.id+',\'won\')">Gagné</button><button class="s r" onclick="settle('+b.id+',\'lost\')">Perdu</button><button class="s n" onclick="settle('+b.id+',\'void\')">Annulé</button></div>').join('')||'<small>Aucun pari en attente</small>';
+ const done=S.bets.filter(b=>b.res==='won'||b.res==='lost'),w=done.filter(b=>b.res==='won').length,mis=done.reduce((a,b)=>a+b.stake,0);
+ $('stats').innerHTML='<b>Statistiques</b><div style="font-size:14px;margin-top:6px">Paris terminés : '+done.length+'<br>Réussite : '+(done.length?fmt(w/done.length*100):0)+' %<br>ROI : '+(mis?fmt(pl/mis*100):0)+' %</div>';
+ $('hist').innerHTML=S.bets.filter(b=>b.res!=='pending').map(b=>'<div class="bet"><b>'+esc(b.evt)+'</b> <small>'+b.date+' · '+b.sport+'</small><br>Cote '+b.odd+' · Mise '+b.stake+' → <span class="'+(profit(b)>=0?'pos':'neg')+'">'+(b.res==='void'?'annulé':(profit(b)>=0?'+':'')+fmt(profit(b)))+'</span> <button class="s n" onclick="del('+b.id+')">✕</button></div>').join('')||'<small>Vide</small>';
+}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function showPrompt(){
+ const v=$('dom').value;let t=PROMPT;
+ if(v!=='all'){
+  const parts=PROMPT.split('\n---\n');
+  const keep=parts.filter(p=>{
+   if(/MODULE HIPPIQUE/.test(p))return v==='Hippique';
+   if(/MODULE FOOTBALL/.test(p))return v==='Football';
+   if(/AUTRES SPORTS/.test(p))return v==='Autres';
+   return true});
+  t=keep.join('\n---\n');
+ }
+ $('ptxt').value=t}
+function copyPrompt(){const t=$('ptxt');t.select();try{navigator.clipboard.writeText(t.value).then(()=>alert('Copié'),()=>{document.execCommand('copy');alert('Copié')})}catch(e){document.execCommand('copy');alert('Copié')}}
+function exportData(){const t=JSON.stringify(S);try{navigator.clipboard.writeText(t).then(()=>alert('Données copiées. Collez-les dans une note pour les sauvegarder.'))}catch(e){prompt('Copiez :',t)}}
+function resetAll(){if(confirm('Effacer toutes les données ?')){S={cap0:0,dev:'Ar',hor:30,pct:3,plaf:14,bets:[]};save();render()}}
+render();showPrompt();
+</script>
+</body>
+</html>
